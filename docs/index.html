@@ -48,7 +48,7 @@ schedule(11,0,-1)
     // if the Csound object is not initialised
     if (csound == null) {
       // import the Csound method from csound.js
-      const { Csound } = await import('js/csound.js');
+      const { Csound } = await import('/cwwc/js/csound.js');
       // create a Csound engine object
       csound = await Csound();
       // set realtime audio (dac) output  
