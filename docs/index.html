@@ -1,0 +1,311 @@
+<!DOCTYPE HTML PUBLIC "-//IETF//DTD HTML//EN">
+<html>
+
+<head>
+  <title>Csound chn read reactivity to Web Components via a subclass factory</title>
+</head>
+
+<script type="module"> // was "text/javascript" 
+  // csound is the Csound engine object (null as we start)
+  let csound = null;
+
+  // csound synthesis code
+  const code = `
+0dbfs = 1
+
+instr 1
+  kamp = port(chnget:k("amp"),0.01,-1)
+  kfreq = port(chnget:k("freq"),0.01,-1)
+  out linenr(vco2(0dbfs*kamp,kfreq,10),0.01,0.5,0.01)
+endin
+
+chnset 0.5, "freq"
+chnset 100, "depth"
+chnset 0.0, "LFO"
+chnset 300, "offset"
+
+instr 9
+	kfreq = chnget:k("freq") ; .2 + 5 *
+	chnset poscil:k(chnget:k("depth"), kfreq), "LFO"
+endin
+
+instr 11
+  kfreq = chnget:k("offset") + chnget:k("LFO")
+  //printk2 kfreq
+  aenv linen 0.5, 0.1, p3, 0.25
+  out poscil(chnget:k("amp"), kfreq) ;* aenv
+endin
+
+schedule(9,0,-1)
+schedule(11,0,-1)
+`;
+
+  // instrument on/off state
+  let isOn = false;
+  // this is the JS function to start Csound
+  // we extend it to toggle the instr on/off
+  async function start() {
+    // if the Csound object is not initialised
+    if (csound == null) {
+      // import the Csound method from csound.js
+      const { Csound } = await import('/js/csound.js');
+      // create a Csound engine object
+      csound = await Csound();
+      // set realtime audio (dac) output  
+      await csound.setOption("-odac");
+      // compile csound code
+      await csound.compileOrc(code);
+      // set the amplitude
+      await csound.setControlChannel('amp', 0);
+      // set the frequency
+      await csound.setControlChannel('freq', 0.5); // 440
+      // start the engine
+      await csound.start();
+      // change text to ON
+      document.getElementById("start button").value = "ON";
+      // change colour to RED
+      document.getElementById("start button").style.color = "red";
+    }
+    // if csound engine is running
+    else {
+      // check if instrument is running
+      if (isOn) {
+        // turn it off
+        //await csound.inputMessage("i-1 0 1")
+        await csound.inputMessage("i-11 0 1")
+        await csound.inputMessage("i-9 0 1")
+        // change text to OFF
+        document.getElementById("start button").value = "OFF";
+        // change colour to black
+        document.getElementById("start button").style.color = "black";
+      } else {
+        // turn it on
+        await csound.inputMessage("i11 0 -1")
+        await csound.inputMessage("i9 0 -1")
+        // change text to ON
+        document.getElementById("start button").value = "ON";
+        // change text to OFF
+        document.getElementById("start button").style.color = "red";
+      }
+    }
+    // toggle instrument state
+    isOn = !isOn;
+  }
+  window.csndStart = start;
+
+  // oninput function
+  async function setParameter(channel, value) {
+    // set channel
+    if (csound) await csound.setControlChannel(channel, value);
+    // update value display
+    document.getElementById(channel + "val").innerHTML = value;
+  }
+
+  window.csndSetParameter = setParameter;
+
+  // data binding subclass factory
+		const CsoundElemClassFactory = (superclass) => class extends superclass {
+			constructor() {
+		    	super();
+		    	this.name = "ChnReact(" + superclass.name +")"; // name for our generated subclass
+		    	console.log("New " + this.name); // + " for #" + this.id + " chn=" + this.dataset.chn);
+		  }
+		  preRenderMutator(chnVal) { // runs before each render/anim frame
+		  	  // a mutator  like Reactive Controller in Lit
+				  this.value = chnVal; // default/sensible for meter/input-type:range etc.; override for others
+		  }
+		  raff = async (timestamp) => {
+		  	  // can't be (unbound) method because it is called in a RAF callback, where `this` would be `undefined`
+		  	  // But as arrow it [pre-]captures `this` lexically in a closure at def time
+			    //console.log("My raff.");
+			    if(this.isConnected) {
+            //console.log("My raff co:" + timestamp);
+            //if(window.csound != null) {
+            if(isOn) {
+              //let isp = await window.csound.isPlaying();
+              //if(isp) {
+                let chnVal = await csound.getControlChannel(this.dataset.chn);
+                this.preRenderMutator(chnVal);
+              //}
+					  }
+					  requestAnimationFrame(this.raff);
+				};
+			}
+	    connectedCallback() {
+				console.log(`${this.name} #${this.id} chn=${this.dataset.chn} added to page.`);
+				//console.log(window.csound); // not def yet
+				requestAnimationFrame(this.raff);
+			}
+      // todo: on disconnect stop raf? 
+		};
+
+		const MyMeter = CsoundElemClassFactory(HTMLMeterElement); // uses defaults, i.e. value
+		customElements.define('my-meter', MyMeter, { extends: "meter" });
+
+    class MySlider extends CsoundElemClassFactory(HTMLInputElement) {
+			connectedCallback() {
+				// setting type="range" from HTML is safest, but a little unsatisfying.
+				this.type = 'range';
+				console.log("Mount! Pre-setting type to", this.type);
+				super.connectedCallback();
+			}
+		}
+		customElements.define('my-slider', MySlider, { extends: "input" });
+		// Interestingly Chrome 83 dev tools fail to show value changing for the input tag, but it works rendered
+		
+		class MyDiv2 extends CsoundElemClassFactory(HTMLDivElement) {
+			// this (mutator) approach preserves other existing inline styles like padding etc.
+		  	preRenderMutator(chnVal) {
+				this.style.backgroundColor = `rgb(0, ${chnVal + 150}, 0)`;
+				this.style.color = `rgb(${chnVal + 150}, 0, 0)`;
+		  	}
+		}
+		customElements.define('my-div2', MyDiv2, { extends: "div" });
+		// fairly expensive cpu-wise to animate the color (or any style changes) like this, but does work in a pinch
+		// one might be able to speed up the above using constructible stylesheets.
+
+	   // It gets more weird to override the child[ren] like for <pre>
+	   class MyPre extends CsoundElemClassFactory(HTMLPreElement) {
+  		  	preRenderMutator(chnVal) {
+				//this.innerHTML = chnVal; // works in Chrom 83, but kinda deprecated & unsafe
+				this.childNodes[0].data = chnVal; // The Text (DOM Node class) inherits that from CharacterData.data
+				//this.childNodes[0].replaceWith(chnVal); // Works too but I think creates a new Text Node.
+			}
+	   }
+  		customElements.define('my-pre', MyPre, { extends: "pre" });
+  		
+  		// The somewhat obscure `<output>` built-in tag 
+  		// also comes with its own value attr, so it's easy to plug:
+  		const MyOut = CsoundElemClassFactory(HTMLOutputElement);
+  		customElements.define('my-out', MyOut, { extends: "output" });
+  		// but to emulate pre would need to be styled use a monospaced font
+
+		//	Finally we do an ACE!
+		//	Original comp (which is a bit dated):  https://www.webcomponents.org/element/input-knob
+		//import InputKnob from 'https://unpkg.com/input-knob@0.0.11/dist/input-knob.esm.js';
+		// ^^uses ShadyCSS. But there is a modernized fork that uses constructible style sheets instead.
+		import InputKnob from 'https://unpkg.com/@node-projects/input-knob@1.1.0/dist/input-knob.js'; // needs module
+		const MyKnob = CsoundElemClassFactory(InputKnob);
+		customElements.define('input-knob', MyKnob); // tag name is's used in CSS, draws huge without*/
+
+</script>
+
+<style>
+      h3 {
+            margin-top: 35px;
+      }	
+      meter {
+        width: 200px;  /* increase width */
+        height: 30px;  /* increase height */
+      }
+      output {
+        font-family: monospace;
+      }
+  	  input-knob { 
+	    width: 10rem;
+	    height: 10rem;
+	    /* padding: 2px; does circular padding! */
+	    margin-top: 5px;
+	    display: block;
+	    border-radius: 50%;
+	    box-shadow: 0 0.3rem 0.3rem rgba(0, 0, 0, 0.5);
+	    background: #cadbbc;
+	  }
+	  input-knob::part(rotator) {
+	    box-sizing: border-box;
+	    width: 10rem;
+	    height: 10rem;
+	    background: #cadbbc;
+	    border: 1rem double #356211;
+	    border-bottom: 1rem solid #356211;
+	    border-radius: 50%;
+	  }
+	  .mark {
+	    display: inline-block;
+	    width: 100%;
+	    text-align: center;
+	    font: bold 300% monospace;
+	    color: #356211;
+	  }  
+</style>
+
+<body>
+  <h1> Csound chn read reactivity to Web Components via a subclass factory</h1>
+  <p>
+    <input type="button" id="start button" onclick="csndStart()" value="OFF"> </input>
+  </p>
+  <div id="sliders">
+    <p>
+      amplitude: <input type="range" id="amp" min="0" max="1" value="0" step="0.001" oninput="csndSetParameter(id, value)"> <span
+        id="ampval"> 0.000 </span> </input>
+    </p>
+    <p><!-- min="100" max="1000" value="440" step="1" -->
+      LFO freq:<input type="range" id="freq" min="0.2" max="10" step="0.1" value="0.5" oninput="csndSetParameter(id, value)"> <span
+        id="freqval"> 440 </span> </input>
+    </p>
+  </div>
+
+  <hr>
+  	<h3>"Customized built-in elements", all reacting to the same LFO chn</h3>
+  	<!-- don't really have to give them ids; that's just for debug/log purposes -->
+		<meter is="my-meter" id="LFOmeter" data-chn="LFO" 
+					min="-100" max="100" step="0.01" value="0"></meter>
+		<!-- type='button' is for checking here that we override type in our subclass before render happens -->
+		<!-- normally type can be left out with our approach to override it on mount aka connect -->
+		<!-- Chrome debugger shows the correct final attr type='range', i.e. after override -->
+		<input type="button" is="my-slider" id="LFOslid" data-chn="LFO"
+					min="-100" max="100" step="0.01" value="0"></input>
+		<div id="animDiv2" is="my-div2" data-chn="LFO"
+				 style="background-color: lightblue; padding: 4px; margin-top: 2px">This is super cheesy.</div>
+		<pre is="my-pre" data-chn="LFO">Chn value will show here.</pre>
+		<output is="my-out" data-chn="LFO">Chn value will show here too.</output>
+
+    		<h3>"Autonomous custom elements" also reacting to the same LFO chn</h3>
+		<!--CsoundQT has some trouble embedding non-Ascii char for the mark alas. -->
+		<table>
+			<tr>
+            <td><input-knob data-chn="LFO" value="0" 
+						scale="250" min="-100" max="100"><div class="mark">A</div></input-knob></td>
+            <td><input-knob data-chn="LFO" value="0" 
+						scale="250" min="-100" max="100"><div class="mark">B</div></input-knob></td>
+            <td><input-knob data-chn="LFO" value="0" 
+						scale="250" min="-100" max="100"><div class="mark">C</div></input-knob></td>
+<!--
+            <td><input-knob data-chn="LFO" value="0" 
+						scale="250" min="-100" max="100"><div class="mark">D</div></input-knob></td>
+            <td><input-knob data-chn="LFO" value="0" 
+						scale="250" min="-100" max="100"><div class="mark">E</div></input-knob></td>
+-->                        
+			</tr>
+<!--			<tr>
+            <td><input-knob data-chn="LFO" value="0" 
+						scale="250" min="-100" max="100"><div class="mark">F</div></input-knob></td>
+            <td><input-knob data-chn="LFO" value="0" 
+						scale="250" min="-100" max="100"><div class="mark">G</div></input-knob></td>
+            <td><input-knob data-chn="LFO" value="0" 
+						scale="250" min="-100" max="100"><div class="mark">H</div></input-knob></td>
+            <td><input-knob data-chn="LFO" value="0" 
+						scale="250" min="-100" max="100"><div class="mark">I</div></input-knob></td>
+            <td><input-knob data-chn="LFO" value="0" 
+						scale="250" min="-100" max="100"><div class="mark">J</div></input-knob></td>		
+			</tr>
+			<tr>
+            <td><input-knob data-chn="LFO" value="0" 
+						scale="250" min="-100" max="100"><div class="mark">F</div></input-knob></td>
+            <td><input-knob data-chn="LFO" value="0" 
+						scale="250" min="-100" max="100"><div class="mark">G</div></input-knob></td>
+            <td><input-knob data-chn="LFO" value="0" 
+						scale="250" min="-100" max="100"><div class="mark">H</div></input-knob></td>
+            <td><input-knob data-chn="LFO" value="0" 
+						scale="250" min="-100" max="100"><div class="mark">I</div></input-knob></td>
+            <td><input-knob data-chn="LFO" value="0" 
+						scale="250" min="-100" max="100"><div class="mark">J</div></input-knob></td>		
+			</tr>
+-->			
+		</table>				 
+
+  <hr>
+
+</body>
+
+</html>
