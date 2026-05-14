@@ -194,11 +194,19 @@ schedule(11,0,-1)
 		const MyKnob = CsoundElemClassFactory(InputKnob);
 		customElements.define('input-knob', MyKnob); // tag name is's used in CSS, draws huge without*/
 
+    async function addACErow() {
+      let table = document.getElementById("ACEs");
+      //console.log(table);
+      let row = table.insertRow(-1);
+      row.innerHTML = table.rows[0].innerHTML;
+    }
+    window.addACErow = addACErow;
 </script>
 
 <style>
     h3 {
       margin-top: 25px;
+      margin-bottom: 5px;
     }
     .large-button {
       width: 100px;
@@ -245,9 +253,10 @@ schedule(11,0,-1)
 </style>
 
 <body>
-  <h1>Csound Web Components</h1>
+  <h2>Csound Web Components Demo</h2>
   <p>
     <input type="button" class="large-button" id="start button" onclick="csndStart()" value="OFF"> </input>
+    <input type="button" class="large-button" id="add row" onclick="addACErow()" value="Add ACE row"> </input>
   </p>
   <div id="sliders">
     <p>
@@ -275,9 +284,9 @@ schedule(11,0,-1)
 		<pre is="my-pre" data-chn="LFO">Chn value will show here.</pre>
 		<output is="my-out" data-chn="LFO">Chn value will show here too.</output>
 
-    		<h3>"Autonomous custom elements" also reacting to the same LFO chn</h3>
+    <h3>"Autonomous custom elements", ibid.</h3>
 		<!--CsoundQT has some trouble embedding non-Ascii char for the mark alas. -->
-		<table>
+		<table id="ACEs">
 			<tr>
             <td><input-knob data-chn="LFO" value="0" 
 						scale="250" min="-100" max="100"><div class="mark">A</div></input-knob></td>
