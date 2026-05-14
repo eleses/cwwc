@@ -16,17 +16,11 @@
   const code = `
 0dbfs = 1
 
-instr 1
-  kamp = port(chnget:k("amp"),0.01,-1)
-  kfreq = port(chnget:k("freq"),0.01,-1)
-  out linenr(vco2(0dbfs*kamp,kfreq,10),0.01,0.5,0.01)
-endin
-
+chnset 0.5, "freq"   ;; LFO's 
+chnset 0.0, "LFO"    ;; LFO output
+chnset 300, "offset" ;; FM center freq.
+chnset 100, "depth"  ;; FM depth
 chnset 0.1, "amp"
-chnset 0.5, "freq"
-chnset 100, "depth"
-chnset 0.0, "LFO"
-chnset 300, "offset"
 
 instr 9
 	kfreq = chnget:k("freq") ; .2 + 5 *
@@ -36,8 +30,8 @@ endin
 instr 11
   kfreq = chnget:k("offset") + chnget:k("LFO")
   //printk2 kfreq
-  aenv linen 0.5, 0.1, p3, 0.25
-  out poscil(chnget:k("amp"), kfreq) ;* aenv
+  kamp = port(chnget:k("amp"),0.01,-1)
+  out linenr(poscil(kamp, kfreq),0.01,0.5,0.01)
 endin
 
 schedule(9,0,-1)
@@ -253,21 +247,25 @@ schedule(11,0,-1)
 </style>
 
 <body>
-  <h2>Csound Web Components Demo</h2>
+  <h2>Csound + Web Components</h2>
   <p>
     <input type="button" class="large-button" id="start button" onclick="csndStart()" value="OFF"> </input>
     <input type="button" class="large-button" id="add row" onclick="addACErow()" value="Add ACE row"> </input>
   </p>
-  <div id="sliders">
-    <p>
-      amplitude: <input type="range" id="amp" min="0" max="1" value="0.1" step="0.001" oninput="csndSetParameter(id, value)"> <span
-        id="ampval"> 0.1 </span> </input>
-    </p>
-    <p><!-- min="100" max="1000" value="440" step="1" -->
-      LFO freq:<input type="range" id="freq" min="0.2" max="10" step="0.1" value="0.5" oninput="csndSetParameter(id, value)"> <span
-        id="freqval"> 440 </span> </input>
-    </p>
-  </div>
+  <table>
+    <tr>
+      <td>amplitude:</td>
+      <td><input type="range" id="amp" min="0" max="1" value="0.1" step="0.001"
+                 oninput="csndSetParameter(id, value)"></input></td>
+      <td><span id="ampval">0.1</span></td>
+    </tr>
+    <tr><!-- bf min="100" max="1000" value="440" step="1" -->
+        <td>LFO freq:</td>
+        <td><input type="range" id="freq" min="0.2" max="10" step="0.1" value="0.5"
+                   oninput="csndSetParameter(id, value)"></input></td>
+        <td><span id="freqval"> 440 </span></td>
+    </tr>
+  </table>
 
   <hr>
   	<h3>"Customized built-in elements", all reacting to the same LFO chn</h3>
@@ -299,31 +297,6 @@ schedule(11,0,-1)
             <td><input-knob data-chn="LFO" value="0" 
 						scale="250" min="-100" max="100"><div class="mark">E</div></input-knob></td>
 			</tr>
-<!--			<tr>
-            <td><input-knob data-chn="LFO" value="0" 
-						scale="250" min="-100" max="100"><div class="mark">F</div></input-knob></td>
-            <td><input-knob data-chn="LFO" value="0" 
-						scale="250" min="-100" max="100"><div class="mark">G</div></input-knob></td>
-            <td><input-knob data-chn="LFO" value="0" 
-						scale="250" min="-100" max="100"><div class="mark">H</div></input-knob></td>
-            <td><input-knob data-chn="LFO" value="0" 
-						scale="250" min="-100" max="100"><div class="mark">I</div></input-knob></td>
-            <td><input-knob data-chn="LFO" value="0" 
-						scale="250" min="-100" max="100"><div class="mark">J</div></input-knob></td>		
-			</tr>
-			<tr>
-            <td><input-knob data-chn="LFO" value="0" 
-						scale="250" min="-100" max="100"><div class="mark">F</div></input-knob></td>
-            <td><input-knob data-chn="LFO" value="0" 
-						scale="250" min="-100" max="100"><div class="mark">G</div></input-knob></td>
-            <td><input-knob data-chn="LFO" value="0" 
-						scale="250" min="-100" max="100"><div class="mark">H</div></input-knob></td>
-            <td><input-knob data-chn="LFO" value="0" 
-						scale="250" min="-100" max="100"><div class="mark">I</div></input-knob></td>
-            <td><input-knob data-chn="LFO" value="0" 
-						scale="250" min="-100" max="100"><div class="mark">J</div></input-knob></td>		
-			</tr>
--->			
 		</table>				 
 
   <hr>
